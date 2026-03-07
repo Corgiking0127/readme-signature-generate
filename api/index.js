@@ -19,8 +19,8 @@ const cache = {};
 function get(u){return new Promise((ok,no)=>{const go=h=>{https.get(h,{headers:{"User-Agent":"Mozilla/5.0"}},r=>{if(r.statusCode>=300&&r.statusCode<400&&r.headers.location){go(r.headers.location);return}const c=[];r.on("data",d=>c.push(d));r.on("end",()=>ok({ok:r.statusCode===200,buf:Buffer.concat(c)}))}).on("error",no)};go(u)})}
 
 async function loadFont(k){
-  const f=FONTS[k]; if(!f||cache[k]) return;
-  cache[k]={css:`@import url('${f.url.replace(/&/g,"&amp;")}');`,m:"fb"};
+  const f=FONTS[k]; if(!f||(cache[k]&&cache[k].m==="ok")) return;
+  if(!cache[k]) cache[k]={css:`@import url('${f.url.replace(/&/g,"&amp;")}');`,m:"fb"};
   try{
     const css=await get(f.url); if(!css.ok) throw 0;
     // Use the last woff2 URL (Google Fonts lists Latin last, which covers most signatures)
@@ -78,7 +78,7 @@ module.exports = async (req, res) => {
 
   const font = FONTS[fk]||FONTS.elegant;
   const color= COLORS[ck]||COLORS.navy;
-  if(!cache[fk]) await loadFont(fk);
+  if(!cache[fk]||cache[fk].m==="fb") await loadFont(fk);
 
   const svg = buildSVG(text,font,fk,color,spd,bgC,fmt!=="static");
   res.setHeader("Content-Type","image/svg+xml;charset=utf-8");
