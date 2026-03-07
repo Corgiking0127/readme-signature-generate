@@ -23,11 +23,12 @@ async function loadFont(k){
   cache[k]={css:`@import url('${f.url.replace(/&/g,"&amp;")}');`,m:"fb"};
   try{
     const css=await get(f.url); if(!css.ok) throw 0;
-    const m=css.buf.toString().match(/url\((https:\/\/fonts\.gstatic\.com\/[^\)]+\.woff2)\)/);
-    if(!m) throw 0;
-    const w=await get(m[1]); if(!w.ok) throw 0;
-    const ur=css.buf.toString().match(/unicode-range:\s*([^;}\n]+)/);
-    cache[k]={css:`@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};src:url(data:font/woff2;base64,${w.buf.toString("base64")}) format('woff2');${ur?"unicode-range:"+ur[1].trim()+";":""}}`,m:"ok"};
+    // Use the last woff2 URL (Google Fonts lists Latin last, which covers most signatures)
+    const all=[...css.buf.toString().matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^\)]+\.woff2)\)/g)];
+    if(!all.length) throw 0;
+    const w=await get(all[all.length-1][1]); if(!w.ok) throw 0;
+    // Omit unicode-range so the embedded font applies to all characters
+    cache[k]={css:`@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};src:url(data:font/woff2;base64,${w.buf.toString("base64")}) format('woff2');}`,m:"ok"};
   }catch(e){/* keep fallback */}
 }
 
@@ -40,7 +41,7 @@ function dots(W,H,f){let d="";for(let i=0;i<50;i++)d+=`<circle cx="${(i*137+29)%
 function fl(f,t,W,H){const e=f.size*.48*t.length,s=W/2-e/2,y=H/2+f.size*.38;let d=`M ${s} ${y}`;for(let x=0;x<=e;x+=4){const p=x/e;d+=` L ${(s+x).toFixed(1)} ${(y+Math.sin(p*Math.PI*2.5)*6*(1-p*.7)).toFixed(1)}`}return{d,l:(e*1.05).toFixed(0)}}
 
 function buildSVG(text,font,fk,color,speed,bgC,animated){
-  const W=600,H=200,b=bi(bgC),dur=(2.4/speed).toFixed(2),fDl=(dur*.78).toFixed(2),fDr=(dur*.28).toFixed(2);
+  const W=600,H=200,b=bi(bgC),dur=(2.4/speed).toFixed(2);
   const sk=font.skewX?`skewX(${font.skewX})`:"",f=fl(font,text,W,H),dt=b.t?"":dots(W,H,b.gr);
   const txtEl=`<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" ${font.sw?`stroke="${color}" stroke-width="${font.sw}"`:""}>${esc(text)}</text>`;
   if(!animated) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
@@ -55,7 +56,7 @@ ${txtEl}
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 <g clip-path="url(#r)">${txtEl}</g>
 <g opacity="1"><animateTransform attributeName="transform" type="translate" from="0 0" to="${W} 0" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/><g transform="translate(0,${H/2-8}) rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.92;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>
-<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" from="${f.l}" to="0" begin="${fDl}s" dur="${fDr}s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1" keyTimes="0;1" repeatCount="indefinite"/></path>
+<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
 }
 
