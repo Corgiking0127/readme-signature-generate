@@ -20,7 +20,8 @@ const COLORS = { navy:"#1a1a4e", black:"#111111", blue:"#1e3a8a", gold:"#8B6914"
 // ─── Font Cache (survives across warm invocations) ───────────────
 const cache = {};
 
-function get(u){return new Promise((ok,no)=>{const go=h=>{https.get(h,{headers:{"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}},r=>{if(r.statusCode>=300&&r.statusCode<400&&r.headers.location){go(r.headers.location);return}const c=[];r.on("data",d=>c.push(d));r.on("end",()=>ok({ok:r.statusCode===200,buf:Buffer.concat(c)}))}).on("error",no)};go(u)})}
+const CHROME_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+function get(u,ua){return new Promise((ok,no)=>{const go=h=>{https.get(h,{headers:{"User-Agent":ua||CHROME_UA}},r=>{if(r.statusCode>=300&&r.statusCode<400&&r.headers.location){go(r.headers.location);return}const c=[];r.on("data",d=>c.push(d));r.on("end",()=>ok({ok:r.statusCode===200,buf:Buffer.concat(c)}))}).on("error",no)};go(u)})}
 
 async function loadFont(k){
   const f=FONTS[k]; if(!f||(cache[k]&&cache[k].m==="ok")) return;
@@ -33,6 +34,12 @@ async function loadFont(k){
     const w=await get(all[all.length-1][1]); if(!w.ok) throw 0;
     // Omit unicode-range so the embedded font applies to all characters
     cache[k]={css:`@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};src:url(data:font/woff2;base64,${w.buf.toString("base64")}) format('woff2');}`,m:"ok",fontBuf:w.buf};
+    // Also fetch TTF for Resvg rendering (fontdb doesn't support woff2)
+    try{
+      const ttfCss=await get(f.url,"Mozilla/4.0"); if(!ttfCss.ok) throw 0;
+      const ttfAll=[...ttfCss.buf.toString().matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^\)]+\.ttf)\)/g)];
+      if(ttfAll.length){const t=await get(ttfAll[ttfAll.length-1][1]); if(t.ok) cache[k].ttfBuf=t.buf}
+    }catch(e){/* TTF fetch failed, Resvg will use system fallback */}
   }catch(e){/* keep fallback */}
 }
 
@@ -126,16 +133,20 @@ function encodeAPNG(pngBuffers,delays){
 async function generateAPNG(text,font,fk,color,speed,bgC){
   if(!Resvg)throw new Error("APNG requires @resvg/resvg-js");
   const dur=2.4/speed;
-  // Cap between 12-60 frames at 20fps to balance quality with file size
-  const fps=20,frameCount=Math.min(60,Math.max(12,Math.ceil(dur*fps)));
+  const fps=30,frameCount=Math.min(90,Math.max(12,Math.ceil(dur*fps)));
   const delay=Math.round(dur*1000/frameCount);
   // Hold final frame for 1s (5×200ms) before looping
   const holdFrames=5,holdDelay=200;
-  const fontOpts={loadSystemFonts:false,defaultFontFamily:font.family};
-  if(cache[fk]&&cache[fk].fontBuf){
-    const tmp=path.join(os.tmpdir(),"sig_"+fk+".woff2");
-    fs.writeFileSync(tmp,cache[fk].fontBuf);
-    fontOpts.fontFiles=[tmp];
+  const fontOpts={loadSystemFonts:true,defaultFontFamily:font.family};
+  if(cache[fk]){
+    // Prefer TTF (fontdb supports it natively); fall back to woff2
+    const fontData=cache[fk].ttfBuf||cache[fk].fontBuf;
+    if(fontData){
+      const ext=cache[fk].ttfBuf?".ttf":".woff2";
+      const tmp=path.join(os.tmpdir(),"sig_"+fk+ext);
+      fs.writeFileSync(tmp,fontData);
+      fontOpts.fontFiles=[tmp];
+    }
   }
   const pngs=[],dly=[];
   for(let i=0;i<frameCount+holdFrames;i++){
