@@ -17,13 +17,17 @@ An elegant signature generator for README and web use, with both a browser UI an
 
 </div>
 
-<div align="center">
+<!-- <div align="center">
 
 <img src="https://readme-signature-generate.vercel.app/api?signature=Corgiking&font=elegant&color=black&speed=0.5&bg=transparent" alt="Signature preview" />
 
-</div>
+</div> -->
 
 ---
+## 效果预览 / Preview
+
+![Signature Preview](https://readme-signature-generate.vercel.app/api?signature=Corgiking&font=elegant&color=black&speed=0.5&bg=transparent)
+
 
 ## 文档 / Documentation
 
