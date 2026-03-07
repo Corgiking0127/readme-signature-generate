@@ -20,20 +20,40 @@ const COLORS = { navy:"#1a1a4e", black:"#111111", blue:"#1e3a8a", gold:"#8B6914"
 // ─── Font Cache (survives across warm invocations) ───────────────
 const cache = {};
 
+// Resolve bundled fonts directory (fonts/ at project root)
+const FONTS_DIR=(()=>{const dirs=[path.join(__dirname,"..","fonts"),path.join(process.cwd(),"fonts")];for(const d of dirs)if(fs.existsSync(d))return d;return null})();
+
 const CHROME_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
 function get(u,ua){return new Promise((ok,no)=>{const go=h=>{https.get(h,{headers:{"User-Agent":ua||CHROME_UA}},r=>{if(r.statusCode>=300&&r.statusCode<400&&r.headers.location){go(r.headers.location);return}const c=[];r.on("data",d=>c.push(d));r.on("end",()=>ok({ok:r.statusCode===200,buf:Buffer.concat(c)}))}).on("error",no)};go(u)})}
+
+function _fontFaceCSS(f,buf,fmt){
+  const mime=fmt==="woff2"?"font/woff2":"font/truetype";
+  const format=fmt==="woff2"?"woff2":"truetype";
+  return `@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};src:url(data:${mime};base64,${buf.toString("base64")}) format('${format}');}`
+}
 
 async function loadFont(k){
   const f=FONTS[k]; if(!f||(cache[k]&&cache[k].m==="ok")) return;
   if(!cache[k]) cache[k]={css:`@import url('${f.url.replace(/&/g,"&amp;")}');`,m:"fb"};
+  // ── Try bundled local font files first (most reliable) ──
+  if(FONTS_DIR){
+    const w2=path.join(FONTS_DIR,k+".woff2"),tt=path.join(FONTS_DIR,k+".ttf");
+    const hasW2=fs.existsSync(w2),hasTTF=fs.existsSync(tt);
+    if(hasW2||hasTTF){
+      const embBuf=hasW2?fs.readFileSync(w2):fs.readFileSync(tt);
+      const embFmt=hasW2?"woff2":"ttf";
+      cache[k]={css:_fontFaceCSS(f,embBuf,embFmt),m:"ok",fontBuf:embBuf};
+      if(hasTTF) cache[k].ttfBuf=fs.readFileSync(tt);
+      return;
+    }
+  }
+  // ── Fallback: fetch from Google Fonts at runtime ──
   try{
     const css=await get(f.url); if(!css.ok) throw 0;
-    // Use the last woff2 URL (Google Fonts lists Latin last, which covers most signatures)
     const all=[...css.buf.toString().matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^\)]+\.woff2)\)/g)];
     if(!all.length) throw 0;
     const w=await get(all[all.length-1][1]); if(!w.ok) throw 0;
-    // Omit unicode-range so the embedded font applies to all characters
-    cache[k]={css:`@font-face{font-family:'${f.family}';font-style:${f.style};font-weight:${f.weight};src:url(data:font/woff2;base64,${w.buf.toString("base64")}) format('woff2');}`,m:"ok",fontBuf:w.buf};
+    cache[k]={css:_fontFaceCSS(f,w.buf,"woff2"),m:"ok",fontBuf:w.buf};
     // Also fetch TTF for Resvg rendering (fontdb doesn't support woff2)
     try{
       const ttfCss=await get(f.url,"Mozilla/4.0"); if(!ttfCss.ok) throw 0;
