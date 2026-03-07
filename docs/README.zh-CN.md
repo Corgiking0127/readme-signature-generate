@@ -4,6 +4,12 @@
 
 > Language: [English](README.en-US.md)
 
+<div align="center">
+
+<img src="https://readme-signature-generate-1qezc8u6a-mcoylabs-projects.vercel.app/api?signature=Corgiking&font=refined&color=navy&speed=0.5&bg=transparent" alt="Signature preview" />
+
+</div>
+
 ---
 
 ## 项目简介

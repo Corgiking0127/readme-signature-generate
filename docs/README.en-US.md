@@ -4,6 +4,12 @@ An elegant signature generator for README and web use. Design a handwritten sign
 
 > Language: [中文](README.zh-CN.md)
 
+<div align="center">
+
+<img src="https://readme-signature-generate-1qezc8u6a-mcoylabs-projects.vercel.app/api?signature=Corgiking&font=refined&color=navy&speed=0.5&bg=transparent" alt="Signature preview" />
+
+</div>
+
 ---
 
 ## Overview
