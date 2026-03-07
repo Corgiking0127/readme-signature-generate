@@ -22,6 +22,7 @@ const FONTS = {
   light:       { family:"Alex Brush",          weight:"normal", url:"https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap" },
   serif:       { family:"Mrs Saint Delafield", weight:"normal", url:"https://fonts.googleapis.com/css2?family=Mrs+Saint+Delafield&display=swap" },
   baskerville: { family:"Zeyada",              weight:"normal", url:"https://fonts.googleapis.com/css2?family=Zeyada&display=swap" },
+  pacifico:   { family:"Pacifico",                 weight:"normal", url:"https://fonts.googleapis.com/css2?family=Pacifico&display=swap" },
 };
 
 const CHROME_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
