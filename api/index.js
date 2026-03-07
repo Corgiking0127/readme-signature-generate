@@ -126,8 +126,10 @@ function encodeAPNG(pngBuffers,delays){
 async function generateAPNG(text,font,fk,color,speed,bgC){
   if(!Resvg)throw new Error("APNG requires @resvg/resvg-js");
   const dur=2.4/speed;
+  // Cap between 12-60 frames at 20fps to balance quality with file size
   const fps=20,frameCount=Math.min(60,Math.max(12,Math.ceil(dur*fps)));
   const delay=Math.round(dur*1000/frameCount);
+  // Hold final frame for 1s (5×200ms) before looping
   const holdFrames=5,holdDelay=200;
   const fontOpts={loadSystemFonts:false,defaultFontFamily:"serif"};
   if(cache[fk]&&cache[fk].fontBuf){

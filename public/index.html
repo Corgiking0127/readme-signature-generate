@@ -438,8 +438,10 @@ async function downloadAPNG(){
   btn.textContent="⏳ Generating…";btn.disabled=true;prog.style.display="block";
   try{
     const dur=2.4/state.speed;
+    // Cap between 12-60 frames at 20fps to balance quality with file size
     const fps=20,frameCount=Math.min(60,Math.max(12,Math.ceil(dur*fps)));
     const delay=Math.round(dur*1000/frameCount);
+    // Hold final frame for 1s (5×200ms) before looping
     const holdFrames=5,holdDelay=200;
     const W=600,H=180;
     const canvas=document.createElement("canvas");canvas.width=W;canvas.height=H;
