@@ -179,14 +179,14 @@ input[type=text]:focus{border-color:rgba(200,162,78,.6)}
 <script>
 // ─── Data ────────────────────────────────────────────────────────
 const FONTS=[
-  {id:"dancing",family:"'Dancing Script', cursive",style:"Elegant Cursive",apiKey:"elegant",weight:"700",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap"},
-  {id:"greatvibes",family:"'Great Vibes', cursive",style:"Classic Flourish",apiKey:"classic",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap"},
-  {id:"parisienne",family:"'Parisienne', cursive",style:"French Elegance",apiKey:"modern",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Parisienne&display=swap"},
-  {id:"sacramento",family:"'Sacramento', cursive",style:"Smooth Flow",apiKey:"bold",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Sacramento&display=swap"},
-  {id:"allura",family:"'Allura', cursive",style:"Formal Script",apiKey:"refined",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Allura&display=swap"},
-  {id:"alexbrush",family:"'Alex Brush', cursive",style:"Brush Stroke",apiKey:"light",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap"},
-  {id:"mrssaint",family:"'Mrs Saint Delafield', cursive",style:"Victorian",apiKey:"serif",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Mrs+Saint+Delafield&display=swap"},
-  {id:"zeyada",family:"'Zeyada', cursive",style:"Handwritten",apiKey:"baskerville",weight:"normal",fStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Zeyada&display=swap"},
+  {id:"dancing",family:"'Dancing Script', cursive",style:"Elegant Cursive",apiKey:"elegant",weight:"700",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap"},
+  {id:"greatvibes",family:"'Great Vibes', cursive",style:"Classic Flourish",apiKey:"classic",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap"},
+  {id:"parisienne",family:"'Parisienne', cursive",style:"French Elegance",apiKey:"modern",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Parisienne&display=swap"},
+  {id:"sacramento",family:"'Sacramento', cursive",style:"Smooth Flow",apiKey:"bold",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Sacramento&display=swap"},
+  {id:"allura",family:"'Allura', cursive",style:"Formal Script",apiKey:"refined",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Allura&display=swap"},
+  {id:"alexbrush",family:"'Alex Brush', cursive",style:"Brush Stroke",apiKey:"light",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Alex+Brush&display=swap"},
+  {id:"mrssaint",family:"'Mrs Saint Delafield', cursive",style:"Victorian",apiKey:"serif",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Mrs+Saint+Delafield&display=swap"},
+  {id:"zeyada",family:"'Zeyada', cursive",style:"Handwritten",apiKey:"baskerville",weight:"normal",fontStyle:"normal",url:"https://fonts.googleapis.com/css2?family=Zeyada&display=swap"},
 ];
 const COLORS=[
   {id:"navy",name:"Navy Ink",color:"#1a1a4e"},{id:"black",name:"Midnight",color:"#111111"},
@@ -249,7 +249,7 @@ ${isT?"":`<rect width="${W}" height="${H}" rx="6" fill="${bg}"/>`}${dots}
 function update(){
   const name=document.getElementById("nameInput").value;
   if(!name.trim()){document.getElementById("previewSvg").innerHTML='<div style="padding:40px;text-align:center;color:#bbb;font-style:italic">Type a name to preview</div>';state.svgStr="";return}
-  state.svgStr=buildSVG(name,state.font.family,state.ink.color,state.bg,state.speed,state.font.url,state.font.weight,state.font.fStyle);
+  state.svgStr=buildSVG(name,state.font.family,state.ink.color,state.bg,state.speed,state.font.url,state.font.weight,state.font.fontStyle);
   document.getElementById("previewSvg").innerHTML=state.svgStr;
   const box=document.getElementById("previewBox");
   if(state.bg==="transparent"){box.style.background="linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),#eee";box.style.backgroundSize="16px 16px,16px 16px";box.style.backgroundPosition="0 0,8px 8px"}
@@ -276,7 +276,7 @@ async function svgWithEmbeddedFont(){
     const fd=await fetchFontBase64(state.font);
     if(fd){
       const imp=`@import url('${state.font.url.replace(/&/g,"&amp;")}');`;
-      const face=`@font-face{font-family:'${fd.familyName}';font-style:${state.font.fStyle||"normal"};font-weight:${state.font.weight||"normal"};src:url(data:font/woff2;base64,${fd.base64}) format('woff2');}`;
+      const face=`@font-face{font-family:'${fd.familyName}';font-style:${state.font.fontStyle||"normal"};font-weight:${state.font.weight||"normal"};src:url(data:font/woff2;base64,${fd.base64}) format('woff2');}`;
       svg=svg.replace(imp,face);
     }
   }
