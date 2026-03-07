@@ -20,7 +20,7 @@ const COLORS = { navy:"#1a1a4e", black:"#111111", blue:"#1e3a8a", gold:"#8B6914"
 // ─── Font Cache (survives across warm invocations) ───────────────
 const cache = {};
 
-function get(u){return new Promise((ok,no)=>{const go=h=>{https.get(h,{headers:{"User-Agent":"Mozilla/5.0"}},r=>{if(r.statusCode>=300&&r.statusCode<400&&r.headers.location){go(r.headers.location);return}const c=[];r.on("data",d=>c.push(d));r.on("end",()=>ok({ok:r.statusCode===200,buf:Buffer.concat(c)}))}).on("error",no)};go(u)})}
+function get(u){return new Promise((ok,no)=>{const go=h=>{https.get(h,{headers:{"User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"}},r=>{if(r.statusCode>=300&&r.statusCode<400&&r.headers.location){go(r.headers.location);return}const c=[];r.on("data",d=>c.push(d));r.on("end",()=>ok({ok:r.statusCode===200,buf:Buffer.concat(c)}))}).on("error",no)};go(u)})}
 
 async function loadFont(k){
   const f=FONTS[k]; if(!f||(cache[k]&&cache[k].m==="ok")) return;
@@ -131,7 +131,7 @@ async function generateAPNG(text,font,fk,color,speed,bgC){
   const delay=Math.round(dur*1000/frameCount);
   // Hold final frame for 1s (5×200ms) before looping
   const holdFrames=5,holdDelay=200;
-  const fontOpts={loadSystemFonts:false,defaultFontFamily:"serif"};
+  const fontOpts={loadSystemFonts:false,defaultFontFamily:font.family};
   if(cache[fk]&&cache[fk].fontBuf){
     const tmp=path.join(os.tmpdir(),"sig_"+fk+".woff2");
     fs.writeFileSync(tmp,cache[fk].fontBuf);
@@ -169,7 +169,7 @@ module.exports = async (req, res) => {
   if(fmt==="apng"){
     try{
       const apng=await generateAPNG(text,font,fk,color,spd,bgC);
-      res.setHeader("Content-Type","image/apng");
+      res.setHeader("Content-Type","image/png");
       res.setHeader("Cache-Control","public,s-maxage=3600,stale-while-revalidate=86400");
       res.status(200).send(apng);
     }catch(e){res.status(500).json({error:"APNG generation failed",detail:e.message})}

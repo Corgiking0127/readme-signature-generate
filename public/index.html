@@ -425,7 +425,7 @@ async function _encodeAPNG(pngBlobs,delays){
   parts.push(_mkPNGChunk("IEND",new Uint8Array(0)));
   let total=0;for(const p of parts)total+=p.length;
   const out=new Uint8Array(total);let off=0;for(const p of parts){out.set(p,off);off+=p.length}
-  return new Blob([out],{type:"image/apng"});
+  return new Blob([out],{type:"image/png"});
 }
 
 async function downloadAPNG(){
@@ -465,7 +465,7 @@ async function downloadAPNG(){
     }
     const apng=await _encodeAPNG(pngs,delays);
     const a=document.createElement("a");a.href=URL.createObjectURL(apng);
-    a.download=`signature_${name.replace(/\s+/g,"_")}.apng`;a.click();URL.revokeObjectURL(a.href);
+    a.download=`signature_${name.replace(/\s+/g,"_")}.png`;a.click();URL.revokeObjectURL(a.href);
   }catch(e){console.error("APNG generation failed:",e);alert("APNG generation failed. Please try SVG format.")}
   finally{btn.textContent=origText;btn.disabled=false;prog.style.display="none"}
 }
