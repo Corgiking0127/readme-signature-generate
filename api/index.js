@@ -103,7 +103,7 @@ function buildStaticFrame(text,font,fk,color,bgC,progress){
   const sk=font.skewX?`skewX(${font.skewX})`:"";
   const f=fl(font,text,W,H);
   const dt=b.t?"":dots(W,H,b.gr);
-  const tl=text.length*font.size*4;
+  const tl=Math.round(text.length*font.size*4);
   const sp=Math.min(1,progress/0.75);
   const dOff=tl*(1-_easeStd(sp));
   let fillOp=0;

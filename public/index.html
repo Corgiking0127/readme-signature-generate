@@ -376,7 +376,7 @@ function buildStaticFrameSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,font
   const grain=lum>128?"rgba(0,0,0,.035)":"rgba(255,255,255,.06)";
   let dots="";if(!isT)for(let i=0;i<50;i++)dots+=`<circle cx="${(i*137+29)%W}" cy="${(i*89+17)%H}" r=".7" fill="${grain}"/>`;
   const fi=fontUrl?`@import url('${fontUrl.replace(/&/g,"&amp;")}');`:"";
-  const tl=text.length*60*4;
+  const tl=Math.round(text.length*60*4);
   const sp=Math.min(1,progress/0.75);
   const dOff=tl*(1-_easeStd(sp));
   let fillOp=0;
