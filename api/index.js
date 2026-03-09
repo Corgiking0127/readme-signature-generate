@@ -112,7 +112,7 @@ ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 ${txtEl}
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45"/>
 </svg>`;
-  // ── Per-glyph animated paths ──
+  // ── Per-glyph animated paths (clipPath + thick stroke = true handwriting) ──
   const glyphs=extractGlyphPaths(text,font,fk,W,H);
   if(!glyphs||!glyphs.length){
     // Fallback: whole-text stroke animation if opentype unavailable
@@ -124,21 +124,25 @@ ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
   }
+  // True handwriting: use glyph outline as clipPath, animate a thick stroke inside
+  // The thick stroke progressively "paints" the character, clipped to its shape
   const n=glyphs.length;
-  const drawPct=0.7;
+  const drawPct=0.75;
   const perChar=drawPct/n;
   const durN=parseFloat(dur);
+  const thickSW=Math.round(font.size*0.8);
+  let defs="<defs>\n";
   let pathsEl="";
   for(let i=0;i<n;i++){
     const begin=(i*perChar*durN).toFixed(2);
     const charDur=(perChar*durN).toFixed(2);
-    const fillBegin=((i*perChar+perChar*0.4)*durN).toFixed(2);
-    const fillDur=(perChar*0.6*durN).toFixed(2);
-    pathsEl+=`<path d="${glyphs[i].d}" fill="${color}" fill-opacity="0" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" from="1" to="0" begin="${begin}s" dur="${charDur}s" fill="freeze"/><animate attributeName="fill-opacity" from="0" to="1" begin="${fillBegin}s" dur="${fillDur}s" fill="freeze"/><animate attributeName="stroke-width" from="1.5" to="0" begin="${(drawPct*durN).toFixed(2)}s" dur="${((1-drawPct)*durN*0.5).toFixed(2)}s" fill="freeze"/></path>\n`;
+    defs+=`<clipPath id="cp${i}"><path d="${glyphs[i].d}"/></clipPath>\n`;
+    pathsEl+=`<g clip-path="url(#cp${i})"><path d="${glyphs[i].d}" fill="${color}" stroke="${color}" stroke-width="${thickSW}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" from="1" to="0" begin="${begin}s" dur="${charDur}s" fill="freeze"/></path></g>\n`;
   }
+  defs+="</defs>\n";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
-${pathsEl}<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
+${defs}${pathsEl}<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
 }
 
@@ -178,27 +182,30 @@ ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${ulOff.toFixed(1)}"/>
 </svg>`;
   }
+  // True handwriting: clipPath + thick stroke for each glyph
   const n=glyphs.length;
-  const drawPct=0.7;
+  const drawPct=0.75;
   const perChar=drawPct/n;
+  const thickSW=Math.round(font.size*0.8);
+  let defs="<defs>\n";
   let pathsEl="";
   for(let i=0;i<n;i++){
     const charStart=i*perChar;
     const charEnd=charStart+perChar;
-    let dashOff=1,fillOp=0,sw=1.5;
-    if(progress>=charEnd){dashOff=0;fillOp=1}
+    let dashOff=1;
+    if(progress>=charEnd){dashOff=0}
     else if(progress>charStart){
       const local=(progress-charStart)/perChar;
       dashOff=Math.max(0,1-local);
-      fillOp=local>0.4?Math.min(1,(local-0.4)/0.6):0;
     }
-    if(progress>drawPct){const fadeP=Math.min(1,(progress-drawPct)/((1-drawPct)*0.5));sw=1.5*(1-fadeP)}
-    if(dashOff===1&&fillOp===0)continue;
-    pathsEl+=`<path d="${glyphs[i].d}" fill="${color}" fill-opacity="${fillOp.toFixed(2)}" stroke="${color}" stroke-width="${sw.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${dashOff.toFixed(3)}"/>\n`;
+    if(dashOff>=1)continue;
+    defs+=`<clipPath id="cp${i}"><path d="${glyphs[i].d}"/></clipPath>\n`;
+    pathsEl+=`<g clip-path="url(#cp${i})"><path d="${glyphs[i].d}" fill="${color}" stroke="${color}" stroke-width="${thickSW}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${dashOff.toFixed(3)}"/></g>\n`;
   }
+  defs+="</defs>\n";
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
-${pathsEl}<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${ulOff.toFixed(1)}"/>
+${defs}${pathsEl}<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${ulOff.toFixed(1)}"/>
 </svg>`;
 }
 
