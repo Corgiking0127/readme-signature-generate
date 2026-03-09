@@ -81,12 +81,11 @@ ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 ${txtEl}
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45"/>
 </svg>`;
+  const tl=Math.round(text.length*font.size*4);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fc(fk)}</style>
-<defs><clipPath id="r"><rect x="0" y="0" width="0" height="${H}"><animate attributeName="width" from="0" to="${W}" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/></rect></clipPath></defs>
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
-<g clip-path="url(#r)">${txtEl}</g>
-<g opacity="1"><animateTransform attributeName="transform" type="translate" from="0 0" to="${W} 0" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/><g transform="translate(0,${H/2-8}) rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.92;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>
+<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" fill-opacity="0" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" stroke-dasharray="${tl}" stroke-dashoffset="${tl}">${esc(text)}<animate attributeName="stroke-dashoffset" values="${tl};0;0" keyTimes="0;0.75;1" dur="${dur}s" calcMode="spline" keySplines="0.25 0.1 0.25 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/><animate attributeName="fill-opacity" values="0;0;1;1" keyTimes="0;0.4;0.75;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/><animate attributeName="stroke-opacity" values="1;1;0;0" keyTimes="0;0.75;0.9;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></text>
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
 }
@@ -104,20 +103,23 @@ function buildStaticFrame(text,font,fk,color,bgC,progress){
   const sk=font.skewX?`skewX(${font.skewX})`:"";
   const f=fl(font,text,W,H);
   const dt=b.t?"":dots(W,H,b.gr);
-  const clipW=W*_easeStd(progress);
-  const penX=W*_easeStd(progress);
-  const penOp=progress<=0.92?1:Math.max(0,1-(progress-0.92)/0.08);
-  let dashOff=parseFloat(f.l);
-  if(progress>0.72&&progress<=0.95){const sp=(progress-0.72)/(0.95-0.72);dashOff=parseFloat(f.l)*(1-_easeFl(sp))}
-  else if(progress>0.95)dashOff=0;
-  const txtEl=`<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" ${font.sw?`stroke="${color}" stroke-width="${font.sw}"`:""}>${esc(text)}</text>`;
+  const tl=text.length*font.size*4;
+  const sp=Math.min(1,progress/0.75);
+  const dOff=tl*(1-_easeStd(sp));
+  let fillOp=0;
+  if(progress>0.4&&progress<=0.75)fillOp=(progress-0.4)/0.35;
+  else if(progress>0.75)fillOp=1;
+  let stOp=1;
+  if(progress>0.75&&progress<=0.9)stOp=1-(progress-0.75)/0.15;
+  else if(progress>0.9)stOp=0;
+  let ulOff=parseFloat(f.l);
+  if(progress>0.72&&progress<=0.95){const u=(progress-0.72)/(0.95-0.72);ulOff=parseFloat(f.l)*(1-_easeFl(u))}
+  else if(progress>0.95)ulOff=0;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fc(fk)}</style>
-<defs><clipPath id="r"><rect x="0" y="0" width="${clipW.toFixed(1)}" height="${H}"/></clipPath></defs>
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
-<g clip-path="url(#r)">${txtEl}</g>
-<g opacity="${penOp.toFixed(2)}" transform="translate(${penX.toFixed(1)},0)"><g transform="translate(0,${H/2-8}) rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g></g>
-<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${dashOff.toFixed(1)}"/>
+<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" fill-opacity="${fillOp.toFixed(2)}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${stOp.toFixed(2)}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" stroke-dasharray="${tl}" stroke-dashoffset="${dOff.toFixed(1)}">${esc(text)}</text>
+<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${ulOff.toFixed(1)}"/>
 </svg>`;
 }
 
