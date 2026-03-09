@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 let Resvg;try{Resvg=require("@resvg/resvg-js").Resvg}catch(e){}
+let opentype;try{opentype=require("opentype.js")}catch(e){}
 
 // ─── Font & Color Data ───────────────────────────────────────────
 const FONTS = {
@@ -44,6 +45,8 @@ async function loadFont(k){
       const embFmt=hasW2?"woff2":"ttf";
       cache[k]={css:_fontFaceCSS(f,embBuf,embFmt),m:"ok",fontBuf:embBuf};
       if(hasTTF) cache[k].ttfBuf=fs.readFileSync(tt);
+      // Parse with opentype.js for glyph path extraction
+      if(opentype&&hasTTF){try{cache[k].otFont=opentype.loadSync(tt)}catch(e){}}
       return;
     }
   }
@@ -58,7 +61,7 @@ async function loadFont(k){
     try{
       const ttfCss=await get(f.url,"Mozilla/4.0"); if(!ttfCss.ok) throw 0;
       const ttfAll=[...ttfCss.buf.toString().matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^\)]+\.ttf)\)/g)];
-      if(ttfAll.length){const t=await get(ttfAll[ttfAll.length-1][1]); if(t.ok) cache[k].ttfBuf=t.buf}
+      if(ttfAll.length){const t=await get(ttfAll[ttfAll.length-1][1]); if(t.ok){cache[k].ttfBuf=t.buf;if(opentype){try{cache[k].otFont=opentype.parse(t.buf.buffer.slice(t.buf.byteOffset,t.buf.byteOffset+t.buf.byteLength))}catch(e){}}}}
     }catch(e){/* TTF fetch failed, Resvg will use system fallback */}
   }catch(e){/* keep fallback */}
 }
@@ -71,6 +74,34 @@ function bi(c){const bg=c||"#faf8f3",t=bg==="transparent",r=t?250:(parseInt(bg.s
 function dots(W,H,f){let d="";for(let i=0;i<50;i++)d+=`<circle cx="${(i*137+29)%W}" cy="${(i*89+17)%H}" r=".7" fill="${f}"/>`;return d}
 function fl(f,t,W,H){const e=f.size*.48*t.length,s=W/2-e/2,y=H/2+f.size*.38;let d=`M ${s} ${y}`;for(let x=0;x<=e;x+=4){const p=x/e;d+=` L ${(s+x).toFixed(1)} ${(y+Math.sin(p*Math.PI*2.5)*6*(1-p*.7)).toFixed(1)}`}return{d,l:(e*1.05).toFixed(0)}}
 
+// ─── Per-glyph Path Extraction ──────────────────────────────────
+function extractGlyphPaths(text,font,fk,W,H){
+  const otFont=cache[fk]&&cache[fk].otFont;
+  if(!otFont)return null;
+  const fontSize=font.size;
+  const scale=fontSize/otFont.unitsPerEm;
+  // Compute total text width and per-char advances
+  const chars=[];let totalW=0;
+  for(let i=0;i<text.length;i++){
+    const g=otFont.charToGlyph(text[i]);
+    const aw=g.advanceWidth*scale+(i<text.length-1?font.ls:0);
+    chars.push({ch:text[i],glyph:g,aw,x:totalW});
+    totalW+=aw;
+  }
+  // Center horizontally, position baseline vertically
+  const offX=(W-totalW)/2;
+  const baseY=H/2+fontSize*0.3;
+  const paths=[];
+  for(const c of chars){
+    if(c.ch===' ')continue;
+    const gp=c.glyph.getPath(offX+c.x,baseY,fontSize);
+    const d=gp.toPathData(2);
+    if(!d||d.length<5)continue;
+    paths.push({ch:c.ch,d});
+  }
+  return paths;
+}
+
 function buildSVG(text,font,fk,color,speed,bgC,animated){
   const W=600,H=200,b=bi(bgC),dur=(2.4/speed).toFixed(2);
   const sk=font.skewX?`skewX(${font.skewX})`:"",f=fl(font,text,W,H),dt=b.t?"":dots(W,H,b.gr);
@@ -81,12 +112,33 @@ ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 ${txtEl}
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45"/>
 </svg>`;
-  const tl=Math.round(text.length*font.size*4);
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  // ── Per-glyph animated paths ──
+  const glyphs=extractGlyphPaths(text,font,fk,W,H);
+  if(!glyphs||!glyphs.length){
+    // Fallback: whole-text stroke animation if opentype unavailable
+    const tl=Math.round(text.length*font.size*4);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fc(fk)}</style>
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 <text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" fill-opacity="0" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" stroke-dasharray="${tl}" stroke-dashoffset="${tl}">${esc(text)}<animate attributeName="stroke-dashoffset" values="${tl};0;0" keyTimes="0;0.75;1" dur="${dur}s" calcMode="spline" keySplines="0.25 0.1 0.25 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/><animate attributeName="fill-opacity" values="0;0;1;1" keyTimes="0;0.4;0.75;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/><animate attributeName="stroke-opacity" values="1;1;0;0" keyTimes="0;0.75;0.9;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></text>
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
+</svg>`;
+  }
+  const n=glyphs.length;
+  const drawPct=0.7;
+  const perChar=drawPct/n;
+  const durN=parseFloat(dur);
+  let pathsEl="";
+  for(let i=0;i<n;i++){
+    const begin=(i*perChar*durN).toFixed(2);
+    const charDur=(perChar*durN).toFixed(2);
+    const fillBegin=((i*perChar+perChar*0.4)*durN).toFixed(2);
+    const fillDur=(perChar*0.6*durN).toFixed(2);
+    pathsEl+=`<path d="${glyphs[i].d}" fill="${color}" fill-opacity="0" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" from="1" to="0" begin="${begin}s" dur="${charDur}s" fill="freeze"/><animate attributeName="fill-opacity" from="0" to="1" begin="${fillBegin}s" dur="${fillDur}s" fill="freeze"/><animate attributeName="stroke-width" from="1.5" to="0" begin="${(drawPct*durN).toFixed(2)}s" dur="${((1-drawPct)*durN*0.5).toFixed(2)}s" fill="freeze"/></path>\n`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
+${pathsEl}<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
 }
 
@@ -100,26 +152,53 @@ const _easeFl=_bez(0.4,0,0.2,1);
 
 function buildStaticFrame(text,font,fk,color,bgC,progress){
   const W=600,H=200,b=bi(bgC);
-  const sk=font.skewX?`skewX(${font.skewX})`:"";
   const f=fl(font,text,W,H);
   const dt=b.t?"":dots(W,H,b.gr);
-  const tl=Math.round(text.length*font.size*4);
-  const sp=Math.min(1,progress/0.75);
-  const dOff=tl*(1-_easeStd(sp));
-  let fillOp=0;
-  if(progress>0.4&&progress<=0.75)fillOp=(progress-0.4)/0.35;
-  else if(progress>0.75)fillOp=1;
-  let stOp=1;
-  if(progress>0.75&&progress<=0.9)stOp=1-(progress-0.75)/0.15;
-  else if(progress>0.9)stOp=0;
+  const glyphs=extractGlyphPaths(text,font,fk,W,H);
+  // Underline animation
   let ulOff=parseFloat(f.l);
   if(progress>0.72&&progress<=0.95){const u=(progress-0.72)/(0.95-0.72);ulOff=parseFloat(f.l)*(1-_easeFl(u))}
   else if(progress>0.95)ulOff=0;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  if(!glyphs||!glyphs.length){
+    // Fallback: whole-text approach
+    const sk=font.skewX?`skewX(${font.skewX})`:"";
+    const tl=Math.round(text.length*font.size*4);
+    const sp=Math.min(1,progress/0.75);
+    const dOff=tl*(1-_easeStd(sp));
+    let fillOp=0;
+    if(progress>0.4&&progress<=0.75)fillOp=(progress-0.4)/0.35;
+    else if(progress>0.75)fillOp=1;
+    let stOp=1;
+    if(progress>0.75&&progress<=0.9)stOp=1-(progress-0.75)/0.15;
+    else if(progress>0.9)stOp=0;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fc(fk)}</style>
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 <text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" fill-opacity="${fillOp.toFixed(2)}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${stOp.toFixed(2)}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" stroke-dasharray="${tl}" stroke-dashoffset="${dOff.toFixed(1)}">${esc(text)}</text>
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${ulOff.toFixed(1)}"/>
+</svg>`;
+  }
+  const n=glyphs.length;
+  const drawPct=0.7;
+  const perChar=drawPct/n;
+  let pathsEl="";
+  for(let i=0;i<n;i++){
+    const charStart=i*perChar;
+    const charEnd=charStart+perChar;
+    let dashOff=1,fillOp=0,sw=1.5;
+    if(progress>=charEnd){dashOff=0;fillOp=1}
+    else if(progress>charStart){
+      const local=(progress-charStart)/perChar;
+      dashOff=Math.max(0,1-local);
+      fillOp=local>0.4?Math.min(1,(local-0.4)/0.6):0;
+    }
+    if(progress>drawPct){const fadeP=Math.min(1,(progress-drawPct)/((1-drawPct)*0.5));sw=1.5*(1-fadeP)}
+    if(dashOff===1&&fillOp===0)continue;
+    pathsEl+=`<path d="${glyphs[i].d}" fill="${color}" fill-opacity="${fillOp.toFixed(2)}" stroke="${color}" stroke-width="${sw.toFixed(2)}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${dashOff.toFixed(3)}"/>\n`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
+${pathsEl}<path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${ulOff.toFixed(1)}"/>
 </svg>`;
 }
 
