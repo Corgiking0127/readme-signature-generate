@@ -293,19 +293,25 @@ function buildSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,fontWeight,font
   let dots="";if(!isT)for(let i=0;i<50;i++)dots+=`<circle cx="${(i*137+29)%W}" cy="${(i*89+17)%H}" r=".7" fill="${grain}"/>`;
   const fi=fontUrl?`@import url('${fontUrl.replace(/&/g,"&amp;")}');`:"";
   if(glyphs&&glyphs.length){
-    // True handwriting: clipPath + thick stroke for each glyph
+    // True handwriting via antfu.me technique: glyph outline as clipPath,
+    // thick stroke (fill="none") animates inside — only the stroke reveals the character.
+    // After all drawn, fill fades in & stroke fades out for clean final text.
     const n=glyphs.length;
-    const drawPct=0.75;
+    const drawPct=0.70;
     const perChar=drawPct/n;
     const durN=parseFloat(dur);
-    const thickSW=Math.round(60*0.8);
+    const thickSW=Math.round(60*2);
+    const allDrawnT=(drawPct*durN).toFixed(2);
+    const fillInDur=(0.12*durN).toFixed(2);
+    const strokeFadeT=((drawPct+0.01)*durN).toFixed(2);
+    const strokeFadeDur=(0.15*durN).toFixed(2);
     let defs="<defs>\n";
     let pathsEl="";
     for(let i=0;i<n;i++){
       const begin=(i*perChar*durN).toFixed(2);
       const charDur=(perChar*durN).toFixed(2);
       defs+=`<clipPath id="cp${i}"><path d="${glyphs[i].d}"/></clipPath>\n`;
-      pathsEl+=`<g clip-path="url(#cp${i})"><path d="${glyphs[i].d}" fill="${inkColor}" stroke="${inkColor}" stroke-width="${thickSW}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" from="1" to="0" begin="${begin}s" dur="${charDur}s" fill="freeze"/></path></g>\n`;
+      pathsEl+=`<g clip-path="url(#cp${i})"><path d="${glyphs[i].d}" fill="${inkColor}" fill-opacity="0" stroke="${inkColor}" stroke-width="${thickSW}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"><animate attributeName="stroke-dashoffset" from="1" to="0" begin="${begin}s" dur="${charDur}s" fill="freeze"/><animate attributeName="fill-opacity" from="0" to="1" begin="${allDrawnT}s" dur="${fillInDur}s" fill="freeze"/><animate attributeName="stroke-width" from="${thickSW}" to="0" begin="${strokeFadeT}s" dur="${strokeFadeDur}s" fill="freeze"/></path></g>\n`;
     }
     defs+="</defs>\n";
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
@@ -450,11 +456,17 @@ function buildStaticFrameSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,font
   if(progress>0.72&&progress<=0.95){const u=(progress-0.72)/(0.95-0.72);ulOff=parseFloat(fLen)*(1-_easeFl(u))}
   else if(progress>0.95)ulOff=0;
   if(glyphs&&glyphs.length){
-    // True handwriting: clipPath + thick stroke for each glyph
+    // True handwriting via antfu.me technique: clipPath + thick stroke, fill="none" during draw
     const n=glyphs.length;
-    const drawPct=0.75;
+    const drawPct=0.70;
     const perChar=drawPct/n;
-    const thickSW=Math.round(60*0.8);
+    const thickSW=Math.round(60*2);
+    // Compute fill-in and stroke-fade based on progress
+    let fillOp=0,curSW=thickSW;
+    if(progress>drawPct&&progress<=drawPct+0.12){fillOp=(progress-drawPct)/0.12}
+    else if(progress>drawPct+0.12){fillOp=1}
+    if(progress>drawPct+0.01&&progress<=drawPct+0.16){curSW=thickSW*(1-(progress-drawPct-0.01)/0.15)}
+    else if(progress>drawPct+0.16){curSW=0}
     let defs="<defs>\n";
     let pathsEl="";
     for(let i=0;i<n;i++){
@@ -466,9 +478,10 @@ function buildStaticFrameSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,font
         const local=(progress-charStart)/perChar;
         dashOff=Math.max(0,1-local);
       }
-      if(dashOff>=1)continue;
+      if(dashOff>=1&&fillOp<=0)continue;
       defs+=`<clipPath id="cp${i}"><path d="${glyphs[i].d}"/></clipPath>\n`;
-      pathsEl+=`<g clip-path="url(#cp${i})"><path d="${glyphs[i].d}" fill="${inkColor}" stroke="${inkColor}" stroke-width="${thickSW}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${dashOff.toFixed(3)}"/></g>\n`;
+      const sw=dashOff<=0?curSW:thickSW;
+      pathsEl+=`<g clip-path="url(#cp${i})"><path d="${glyphs[i].d}" fill="${inkColor}" fill-opacity="${fillOp.toFixed(2)}" stroke="${inkColor}" stroke-width="${Math.max(0,sw).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${dashOff.toFixed(3)}"/></g>\n`;
     }
     defs+="</defs>\n";
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
