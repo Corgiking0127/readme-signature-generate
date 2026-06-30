@@ -93,7 +93,8 @@ GET /api?signature=John+Smith
 | `color` | 否 | `navy` | 墨水颜色 |
 | `speed` | 否 | `1` | 动画速度，范围 `0.25 ~ 5` |
 | `bg` | 否 | `#faf8f3` | 背景色，支持十六进制或 `transparent` |
-| `format` | 否 | `svg` | `svg` 为动画版，`static` 为静态版 |
+| `format` | 否 | `svg` | `svg` 为动画版，`static` 为静态版，`apng` 为动画 PNG |
+| `anim` | 否 | `print` | `print` 为从左到右整体显现；`write` 为一笔一划逐字手写 |
 
 ### 调用示例
 
@@ -103,6 +104,7 @@ https://your-app.vercel.app/api?signature=Jane+Doe&font=classic&color=gold
 https://your-app.vercel.app/api?signature=Alice&font=modern&bg=1a1a2e&color=gold&speed=2
 https://your-app.vercel.app/api?signature=Bob&bg=transparent&color=crimson
 https://your-app.vercel.app/api?signature=Test&format=static
+https://your-app.vercel.app/api?signature=Ada+Lovelace&anim=write
 ```
 
 ## 字体列表

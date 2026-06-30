@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:antfu.me)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}

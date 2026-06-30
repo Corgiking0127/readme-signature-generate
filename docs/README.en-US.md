@@ -88,7 +88,8 @@ The response is an SVG image.
 | `color` | No | `navy` | Ink color |
 | `speed` | No | `1` | Animation speed, range `0.25 ~ 5` |
 | `bg` | No | `#faf8f3` | Background color or `transparent` |
-| `format` | No | `svg` | `svg` for animated, `static` for static output |
+| `format` | No | `svg` | `svg` for animated, `static` for still, `apng` for animated PNG |
+| `anim` | No | `print` | `print` reveals left-to-right; `write` draws stroke-by-stroke, letter by letter |
 
 ### Example URLs
 
@@ -98,6 +99,7 @@ https://your-app.vercel.app/api?signature=Jane+Doe&font=classic&color=gold
 https://your-app.vercel.app/api?signature=Alice&font=modern&bg=1a1a2e&color=gold&speed=2
 https://your-app.vercel.app/api?signature=Bob&bg=transparent&color=crimson
 https://your-app.vercel.app/api?signature=Test&format=static
+https://your-app.vercel.app/api?signature=Ada+Lovelace&anim=write
 ```
 
 ## Fonts

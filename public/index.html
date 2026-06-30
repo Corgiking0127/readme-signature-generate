@@ -119,6 +119,11 @@ input[type=text]:focus{border-color:rgba(200,162,78,.6)}
     </div>
   </div>
 
+  <!-- Animation Style -->
+  <div class="section"><div class="lb">Animation Style</div>
+    <div class="fmt-row" style="justify-content:flex-start" id="animBtns"></div>
+  </div>
+
   <!-- Speed -->
   <div class="section"><div class="lb">Animation Speed</div>
     <div class="speed-row"><div class="speed-btns" id="speedBtns"></div><div class="speed-bar"><div class="speed-fill" id="speedFill"></div></div></div>
@@ -214,7 +219,7 @@ const BG_SWATCHES=[
   {c:"#2d2d2d",t:"Charcoal"},{c:"#0d1b2a",t:"Deep Ocean"},{c:"transparent",t:"None"},
 ];
 
-let state={font:FONTS[0],ink:COLORS[0],bg:"#faf8f3",speed:1,svgStr:""};
+let state={font:FONTS[0],ink:COLORS[0],bg:"#faf8f3",speed:1,svgStr:"",anim:"write"};
 
 function defaultBase(){return location.origin+"/api"}
 
@@ -249,26 +254,68 @@ function buildSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,fontWeight,font
   const grain=lum>128?"rgba(0,0,0,.035)":"rgba(255,255,255,.06)",pen=lum>128?"#3a3a3a":"#aaa";
   let dots="";if(!isT)for(let i=0;i<50;i++)dots+=`<circle cx="${(i*137+29)%W}" cy="${(i*89+17)%H}" r=".7" fill="${grain}"/>`;
   const fi=fontUrl?`@import url('${fontUrl.replace(/&/g,"&amp;")}');`:"";
+  const strokeLen=Math.round(text.length*60*3.5),txS=(W/2-estW/2).toFixed(1),txE=(W/2+estW/2).toFixed(1);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fi}</style>
-<defs><clipPath id="reveal"><rect x="0" y="0" width="0" height="${H}"><animate attributeName="width" from="0" to="${W}" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/></rect></clipPath></defs>
+<defs><clipPath id="reveal"><rect x="0" y="0" width="${txS}" height="${H}"><animate attributeName="width" values="${txS};${txE};${W}" keyTimes="0;0.8;1" dur="${dur}s" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></rect></clipPath></defs>
 ${isT?"":`<rect width="${W}" height="${H}" rx="6" fill="${bg}"/>`}${dots}
-<g clip-path="url(#reveal)"><text x="${W/2}" y="${H/2+4}" font-family="${fontFamily}" font-size="60" font-weight="${fontWeight||"normal"}" font-style="${fontStyle||"normal"}" fill="${inkColor}" text-anchor="middle" dominant-baseline="middle" letter-spacing="1">${escXml(text)}</text></g>
-<g opacity="1"><animateTransform attributeName="transform" type="translate" from="0 0" to="${W} 0" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/><g transform="translate(0,${H/2-22}) rotate(22)"><rect x="-1.8" y="-28" width="3.6" height="26" rx="1.2" fill="${pen}"/><polygon points="0,1 -2,-5 2,-5" fill="${inkColor}"/></g><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.92;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>
+<g clip-path="url(#reveal)"><text x="${W/2}" y="${H/2+4}" font-family="${fontFamily}" font-size="60" font-weight="${fontWeight||"normal"}" font-style="${fontStyle||"normal"}" fill="${inkColor}" fill-opacity="0" stroke="${inkColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${strokeLen}" stroke-dashoffset="${strokeLen}" text-anchor="middle" dominant-baseline="middle" letter-spacing="1">${escXml(text)}<animate attributeName="stroke-dashoffset" values="${strokeLen};0;0" keyTimes="0;0.8;1" dur="${dur}s" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/><animate attributeName="fill-opacity" values="0;0;1;1" keyTimes="0;0.65;0.85;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/><animate attributeName="stroke-opacity" values="1;1;0;0" keyTimes="0;0.75;0.95;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></text></g>
+<g opacity="1"><animateTransform attributeName="transform" type="translate" values="${txS} 0;${txE} 0;${txE} 0" keyTimes="0;0.8;1" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1" repeatCount="indefinite"/><g transform="translate(0,${H/2-22}) rotate(22)"><rect x="-1.8" y="-28" width="3.6" height="26" rx="1.2" fill="${pen}"/><polygon points="0,1 -2,-5 2,-5" fill="${inkColor}"/></g><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.85;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>
 <path d="${fD}" fill="none" stroke="${inkColor}" stroke-width="1.4" stroke-linecap="round" opacity=".5" stroke-dasharray="${fLen}" stroke-dashoffset="${fLen}"><animate attributeName="stroke-dashoffset" values="${fLen};${fLen};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
 }
 
+// ─── Shared API URL builder ──────────────────────────────────────
+function buildApiUrl(fmt){
+  const name=document.getElementById("nameInput").value,base=document.getElementById("apiBase").value;
+  const bgP=state.bg!=="#faf8f3"?`&bg=${encodeURIComponent(state.bg)}`:"";
+  const animP=state.anim==="write"?"&anim=write":"";
+  let u=`${base}?signature=${encodeURIComponent(name)}&font=${state.font.apiKey}&color=${state.ink.id}&speed=${state.speed}${bgP}${animP}`;
+  if(fmt==="static")u+="&format=static";
+  else if(fmt==="apng")u+="&format=apng";
+  return u;
+}
+
 // ─── State & Render ──────────────────────────────────────────────
-function update(){
-  const name=document.getElementById("nameInput").value;
-  if(!name.trim()){document.getElementById("previewSvg").innerHTML='<div style="padding:40px;text-align:center;color:#bbb;font-style:italic">Type a name to preview</div>';state.svgStr="";return}
-  state.svgStr=buildSVG(name,state.font.family,state.ink.color,state.bg,state.speed,state.font.url,state.font.weight,state.font.fontStyle);
-  document.getElementById("previewSvg").innerHTML=state.svgStr;
+function setPreviewBg(){
   const box=document.getElementById("previewBox");
   if(state.bg==="transparent"){box.style.background="linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),linear-gradient(45deg,#ddd 25%,transparent 25%,transparent 75%,#ddd 75%),#eee";box.style.backgroundSize="16px 16px,16px 16px";box.style.backgroundPosition="0 0,8px 8px"}
   else{box.style.background=state.bg;box.style.backgroundSize="";box.style.backgroundPosition=""}
-  document.getElementById("svgSize").textContent=state.svgStr?`${(new Blob([state.svgStr]).size/1024).toFixed(1)} KB`:"—";
+}
+// Handwrite SVG is path-based and produced by the server — fetch + inject it (debounced).
+let _hwTimer=null,_hwSeq=0;
+function renderHandwritePreview(){
+  clearTimeout(_hwTimer);
+  const seq=++_hwSeq,url=buildApiUrl("svg");
+  _hwTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(url+"&_t="+Date.now());if(!r.ok)throw 0;
+      const svg=await r.text();
+      if(seq!==_hwSeq)return; // a newer request superseded this one
+      state.svgStr=svg;
+      document.getElementById("previewSvg").innerHTML=svg;
+      document.getElementById("svgSize").textContent=`${(new Blob([svg]).size/1024).toFixed(1)} KB`;
+      updateUrls();
+    }catch(e){
+      if(seq!==_hwSeq)return;
+      state.svgStr="";
+      document.getElementById("previewSvg").innerHTML='<div style="padding:40px;text-align:center;color:#bbb;font-style:italic">Handwriting preview needs the API running — start the local server or deploy.</div>';
+      document.getElementById("svgSize").textContent="—";
+    }
+  },220);
+}
+function update(){
+  const name=document.getElementById("nameInput").value;
+  if(!name.trim()){document.getElementById("previewSvg").innerHTML='<div style="padding:40px;text-align:center;color:#bbb;font-style:italic">Type a name to preview</div>';state.svgStr="";return}
+  setPreviewBg();
+  if(state.anim==="write"){
+    renderHandwritePreview();
+  }else{
+    clearTimeout(_hwTimer);_hwSeq++; // cancel any in-flight handwrite fetch so it can't clobber this preview
+    state.svgStr=buildSVG(name,state.font.family,state.ink.color,state.bg,state.speed,state.font.url,state.font.weight,state.font.fontStyle);
+    document.getElementById("previewSvg").innerHTML=state.svgStr;
+    document.getElementById("svgSize").textContent=state.svgStr?`${(new Blob([state.svgStr]).size/1024).toFixed(1)} KB`:"—";
+  }
   updateUrls();
   renderFontGrid();
 }
@@ -312,14 +359,12 @@ function copyUrl(btn,text){
 }
 
 function updateUrls(){
-  const name=document.getElementById("nameInput").value,base=document.getElementById("apiBase").value;
-  const bgP=state.bg!=="#faf8f3"?`&bg=${encodeURIComponent(state.bg)}`:"";
-  const svgU=`${base}?signature=${encodeURIComponent(name)}&font=${state.font.apiKey}&color=${state.ink.id}&speed=${state.speed}${bgP}`;
-  const staticU=svgU+"&format=static";
+  const svgU=buildApiUrl("svg");
+  const staticU=buildApiUrl("static");
   const rows=[
     {l:"Animated SVG URL",u:svgU,f:"svg"},
     {l:"Static SVG URL",u:staticU,f:"static"},
-    {l:"APNG Animation URL",u:svgU+"&format=apng",f:"apng"},
+    {l:"APNG Animation URL",u:buildApiUrl("apng"),f:"apng"},
     {l:"HTML Embed",u:`<img src="${svgU}" alt="Signature" />`,f:"html"},
     {l:"Markdown Embed",u:`![signature](${svgU})`,f:"md"},
   ];
@@ -350,6 +395,14 @@ function renderSpeedBtns(){
   document.getElementById("speedBtns").innerHTML=SPEEDS.map(s=>`<button class="speed-btn${state.speed===s.v?" on":""}" onclick="state.speed=${s.v};renderSpeedBtns();update()"><span class="val">${s.l}</span><span class="desc">${s.d}</span></button>`).join("");
   document.getElementById("speedFill").style.width=`${(state.speed/3)*100}%`;
 }
+const ANIMS=[
+  {v:"write",icon:"✍️",label:"Handwrite",desc:"Stroke by stroke"},
+  {v:"print",icon:"➡️",label:"Print",desc:"Left to right"},
+];
+function renderAnimBtns(){
+  document.getElementById("animBtns").innerHTML=ANIMS.map(a=>`<button class="fmt-btn${state.anim===a.v?" on":""}" onclick="setAnim('${a.v}')"><span class="fmt-icon">${a.icon}</span><span class="fmt-label">${a.label}</span><span class="fmt-desc">${a.desc}</span></button>`).join("");
+}
+function setAnim(v){state.anim=v;renderAnimBtns();update()}
 
 // ─── Format Selector & APNG Download ────────────────────────────
 let dlFormat="svg";
@@ -360,7 +413,26 @@ function setFormat(fmt){
   btn.textContent=fmt==="apng"?"↓ Download APNG Animation":"↓ Download Animated SVG";
   document.getElementById("copySrcBtn").style.display=fmt==="apng"?"none":"";
 }
-function doDownload(){if(dlFormat==="apng")downloadAPNG();else downloadSvg()}
+function doDownload(){
+  if(state.anim==="write"){ // handwrite output is server-generated (path-based, font-free)
+    if(dlFormat==="apng")downloadFromServer("apng");else downloadFromServer("svg");
+    return;
+  }
+  if(dlFormat==="apng")downloadAPNG();else downloadSvg();
+}
+async function downloadFromServer(fmt){
+  const name=document.getElementById("nameInput").value;
+  if(!name.trim())return;
+  const btn=document.getElementById("dlBtn"),orig=btn.textContent;
+  btn.textContent="⏳ Downloading…";btn.disabled=true;
+  try{
+    const r=await fetch(buildApiUrl(fmt)+"&_t="+Date.now());if(!r.ok)throw 0;
+    const blob=await r.blob();
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+    a.download=`signature_${name.replace(/\s+/g,"_")}.${fmt==="apng"?"png":"svg"}`;a.click();URL.revokeObjectURL(a.href);
+  }catch(e){alert("Download needs the API running. Start the local server or deploy, then retry.")}
+  finally{btn.textContent=orig;btn.disabled=false}
+}
 
 // ─── Browser APNG Encoder ───────────────────────────────────────
 function _bezFn(x1,y1,x2,y2){return function(t){if(t<=0)return 0;if(t>=1)return 1;let b=t;for(let i=0;i<8;i++){const x=3*(1-b)*(1-b)*b*x1+3*(1-b)*b*b*x2+b*b*b;const d=3*(1-b)*(1-b)*x1+6*(1-b)*b*(x2-x1)+3*b*b*(1-x2);if(Math.abs(x-t)<1e-6)break;if(Math.abs(d)>1e-6)b-=(x-t)/d}return 3*(1-b)*(1-b)*b*y1+3*(1-b)*b*b*y2+b*b*b}}
@@ -377,9 +449,19 @@ function buildStaticFrameSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,font
   const grain=lum>128?"rgba(0,0,0,.035)":"rgba(255,255,255,.06)",pen=lum>128?"#3a3a3a":"#aaa";
   let dots="";if(!isT)for(let i=0;i<50;i++)dots+=`<circle cx="${(i*137+29)%W}" cy="${(i*89+17)%H}" r=".7" fill="${grain}"/>`;
   const fi=fontUrl?`@import url('${fontUrl.replace(/&/g,"&amp;")}');`:"";
-  const clipW=W*_easeStd(progress);
-  const penX=W*_easeStd(progress);
-  const penOp=progress<=0.92?1:Math.max(0,1-(progress-0.92)/0.08);
+  const strokeLen=Math.round(text.length*60*3.5),txS=W/2-estW/2,txE=W/2+estW/2;
+  let sDashOff=strokeLen;
+  if(progress<=0.8){sDashOff=strokeLen*(1-_easeFl(progress/0.8))}else{sDashOff=0}
+  let fillOp=0;
+  if(progress>0.65&&progress<=0.85)fillOp=(progress-0.65)/0.2;
+  else if(progress>0.85)fillOp=1;
+  let sOp=1;
+  if(progress>0.75&&progress<=0.95)sOp=1-(progress-0.75)/0.2;
+  else if(progress>0.95)sOp=0;
+  const penX=progress<=0.8?txS+(txE-txS)*_easeFl(progress/0.8):txE;
+  const penOp=progress<=0.85?1:Math.max(0,1-(progress-0.85)/0.15);
+  let clipW;
+  if(progress<=0.8){clipW=txS+(txE-txS)*_easeFl(progress/0.8)}else{clipW=txE+(W-txE)*((progress-0.8)/0.2)}
   let dashOff=parseFloat(fLen);
   if(progress>0.72&&progress<=0.95){const sp=(progress-0.72)/(0.95-0.72);dashOff=parseFloat(fLen)*(1-_easeFl(sp))}
   else if(progress>0.95)dashOff=0;
@@ -387,7 +469,7 @@ function buildStaticFrameSVG(text,fontFamily,inkColor,bgColor,speed,fontUrl,font
 <style>${fi}</style>
 <defs><clipPath id="reveal"><rect x="0" y="0" width="${clipW.toFixed(1)}" height="${H}"/></clipPath></defs>
 ${isT?"":`<rect width="${W}" height="${H}" rx="6" fill="${bg}"/>`}${dots}
-<g clip-path="url(#reveal)"><text x="${W/2}" y="${H/2+4}" font-family="${fontFamily}" font-size="60" font-weight="${fontWeight||"normal"}" font-style="${fontStyle||"normal"}" fill="${inkColor}" text-anchor="middle" dominant-baseline="middle" letter-spacing="1">${escXml(text)}</text></g>
+<g clip-path="url(#reveal)"><text x="${W/2}" y="${H/2+4}" font-family="${fontFamily}" font-size="60" font-weight="${fontWeight||"normal"}" font-style="${fontStyle||"normal"}" fill="${inkColor}" fill-opacity="${fillOp.toFixed(2)}" stroke="${inkColor}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${sOp.toFixed(2)}" stroke-dasharray="${strokeLen}" stroke-dashoffset="${sDashOff.toFixed(0)}" text-anchor="middle" dominant-baseline="middle" letter-spacing="1">${escXml(text)}</text></g>
 <g opacity="${penOp.toFixed(2)}" transform="translate(${penX.toFixed(1)},0)"><g transform="translate(0,${H/2-22}) rotate(22)"><rect x="-1.8" y="-28" width="3.6" height="26" rx="1.2" fill="${pen}"/><polygon points="0,1 -2,-5 2,-5" fill="${inkColor}"/></g></g>
 <path d="${fD}" fill="none" stroke="${inkColor}" stroke-width="1.4" stroke-linecap="round" opacity=".5" stroke-dasharray="${fLen}" stroke-dashoffset="${dashOff.toFixed(1)}"/>
 </svg>`;
@@ -475,7 +557,7 @@ async function downloadAPNG(){
 
 // Boot
 document.getElementById("apiBase").value=defaultBase();
-renderFontGrid();renderColorRow();renderBgSwatches();renderSpeedBtns();
+renderFontGrid();renderColorRow();renderBgSwatches();renderSpeedBtns();renderAnimBtns();
 setTimeout(update,300);
 </script>
 </body>

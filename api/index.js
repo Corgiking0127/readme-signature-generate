@@ -3,6 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 let Resvg;try{Resvg=require("@resvg/resvg-js").Resvg}catch(e){}
+let opentype;try{opentype=require("opentype.js")}catch(e){}
 
 // ─── Font & Color Data ───────────────────────────────────────────
 const FONTS = {
@@ -71,6 +72,119 @@ function bi(c){const bg=c||"#faf8f3",t=bg==="transparent",r=t?250:(parseInt(bg.s
 function dots(W,H,f){let d="";for(let i=0;i<50;i++)d+=`<circle cx="${(i*137+29)%W}" cy="${(i*89+17)%H}" r=".7" fill="${f}"/>`;return d}
 function fl(f,t,W,H){const e=f.size*.48*t.length,s=W/2-e/2,y=H/2+f.size*.38;let d=`M ${s} ${y}`;for(let x=0;x<=e;x+=4){const p=x/e;d+=` L ${(s+x).toFixed(1)} ${(y+Math.sin(p*Math.PI*2.5)*6*(1-p*.7)).toFixed(1)}`}return{d,l:(e*1.05).toFixed(0)}}
 
+// ─── Handwriting (per-glyph stroke) helpers ──────────────────────
+const _otCache={};
+// Parse the bundled TTF once per font (opentype.js cannot read woff2)
+function getOTFont(fk){
+  if(_otCache[fk]!==undefined) return _otCache[fk];
+  let font=null;
+  try{
+    const b=cache[fk]&&cache[fk].ttfBuf;
+    if(opentype&&b){const ab=b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);font=opentype.parse(ab)}
+  }catch(e){font=null}
+  _otCache[fk]=font;return font;
+}
+// Flatten an opentype command list into a polyline with cumulative length.
+function flattenCmds(cmds){
+  const pts=[];let cx=0,cy=0,sx=0,sy=0,len=0;
+  const push=(x,y)=>{if(pts.length)len+=Math.hypot(x-cx,y-cy);pts.push({x,y,l:len});cx=x;cy=y};
+  for(const c of cmds){
+    if(c.type==="M"){if(pts.length)len+=Math.hypot(c.x-cx,c.y-cy);pts.push({x:c.x,y:c.y,l:len});cx=c.x;cy=c.y;sx=c.x;sy=c.y}
+    else if(c.type==="L"){push(c.x,c.y)}
+    else if(c.type==="Q"){const x0=cx,y0=cy,n=8;for(let i=1;i<=n;i++){const t=i/n,m=1-t;push(m*m*x0+2*m*t*c.x1+t*t*c.x,m*m*y0+2*m*t*c.y1+t*t*c.y)}}
+    else if(c.type==="C"){const x0=cx,y0=cy,n=10;for(let i=1;i<=n;i++){const t=i/n,m=1-t;push(m*m*m*x0+3*m*m*t*c.x1+3*m*t*t*c.x2+t*t*t*c.x,m*m*m*y0+3*m*m*t*c.y1+3*m*t*t*c.y2+t*t*t*c.y)}}
+    else if(c.type==="Z"){push(sx,sy)}
+  }
+  return{len:len||1,pts};
+}
+function ptAtLen(pts,target){
+  if(target<=0)return pts[0];
+  for(let i=1;i<pts.length;i++){if(pts[i].l>=target){const a=pts[i-1],b=pts[i],t=(target-a.l)/((b.l-a.l)||1);return{x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t}}}
+  return pts[pts.length-1];
+}
+// Lay out glyphs per-character via charToGlyph (avoids opentype's GSUB shaping,
+// which throws on some fonts) and return per-glyph outline paths centred in 600x200.
+function _layout(ot,text,fs){
+  const scale=fs/ot.unitsPerEm;let x=0,prev=null;const out=[];
+  for(const ch of text){
+    const g=ot.charToGlyph(ch);
+    if(prev){try{x+=ot.getKerningValue(prev,g)*scale}catch(e){}}
+    out.push({g,x});
+    x+=(g.advanceWidth||0)*scale;prev=g;
+  }
+  return{glyphs:out,width:x};
+}
+function glyphData(text,font,fk){
+  const ot=getOTFont(fk);if(!ot)return null;
+  try{
+    const W=600,H=200,maxW=W-60;
+    let fs=font.size;
+    const w0=_layout(ot,text,fs).width;
+    if(w0>maxW)fs=fs*maxW/w0;
+    const laid=_layout(ot,text,fs).glyphs;
+    let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity;const glyphs=[];
+    for(const{g,x}of laid){
+      const p=g.getPath(x,0,fs);
+      if(!p.commands.length)continue;
+      const bb=p.getBoundingBox();
+      if(!isFinite(bb.x1))continue;
+      x1=Math.min(x1,bb.x1);y1=Math.min(y1,bb.y1);x2=Math.max(x2,bb.x2);y2=Math.max(y2,bb.y2);
+      const f=flattenCmds(p.commands);
+      glyphs.push({d:p.toPathData(2),len:f.len,pts:f.pts});
+    }
+    if(!glyphs.length||!isFinite(x1))return null;
+    return{glyphs,dx:W/2-(x1+x2)/2,dy:H/2-(y1+y2)/2,W,H,fs};
+  }catch(e){return null}
+}
+// Shared timeline: per-letter draw slot + trailing hold.
+function hwTiming(n,speed){
+  const per=.35,hold=.8,draw=n*per,total=draw+hold;
+  return{totalDur:total/speed,drawFrac:draw/total,slot:(draw/total)/n};
+}
+const _STROKE="1.6";
+function buildHandwriteSVG(text,font,fk,color,speed,bgC){
+  const gd=glyphData(text,font,fk);
+  if(!gd)return buildSVG(text,font,fk,color,speed,bgC,true);
+  const{glyphs,dx,dy,W,H}=gd,n=glyphs.length,b=bi(bgC),dt=b.t?"":dots(W,H,b.gr);
+  const{totalDur,drawFrac,slot}=hwTiming(n,speed),dur=totalDur.toFixed(2);
+  let totLen=0;for(const g of glyphs)totLen+=g.len;
+  let paths="",combined="",cum=0;const penKT=["0"],penKP=["0"];
+  for(let i=0;i<n;i++){
+    const g=glyphs[i],start=i*slot,end=(i+1)*slot,fillStart=Math.max(start,end-slot*.4),len=g.len.toFixed(1);
+    paths+=`<path d="${g.d}" fill="${color}" fill-opacity="0" stroke="${color}" stroke-width="${_STROKE}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${len}" stroke-dashoffset="${len}"><animate attributeName="stroke-dashoffset" values="${len};${len};0;0" keyTimes="0;${start.toFixed(4)};${end.toFixed(4)};1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/><animate attributeName="fill-opacity" values="0;0;1;1" keyTimes="0;${fillStart.toFixed(4)};${end.toFixed(4)};1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></path>`;
+    combined+=g.d;cum+=g.len;penKT.push(end.toFixed(4));penKP.push((cum/totLen).toFixed(4));
+  }
+  penKT.push("1");penKP.push("1");
+  const pen=`<g opacity="1"><g transform="rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g><animateMotion dur="${dur}s" repeatCount="indefinite" fill="freeze" calcMode="linear" keyTimes="${penKT.join(";")}" keyPoints="${penKP.join(";")}"><mpath xlink:href="#hwpath"/></animateMotion><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;${Math.max(0,drawFrac-.01).toFixed(4)};${Math.min(1,drawFrac+.03).toFixed(4)};1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
+<defs><path id="hwpath" d="${combined}"/></defs>
+<g transform="translate(${dx.toFixed(2)},${dy.toFixed(2)})">
+${paths}
+${pen}
+</g>
+</svg>`;
+}
+// Single static frame of the handwriting animation at progress p (for APNG / static export).
+function buildHandwriteFrame(gd,color,bgC,p,speed){
+  const{glyphs,dx,dy,W,H}=gd,n=glyphs.length,b=bi(bgC),dt=b.t?"":dots(W,H,b.gr);
+  const{drawFrac,slot}=hwTiming(n,speed);
+  let paths="",penX=null,penY=null;
+  for(let i=0;i<n;i++){
+    const g=glyphs[i],start=i*slot,end=(i+1)*slot,fillStart=Math.max(start,end-slot*.4),len=g.len;
+    let off=len,fillOp=0;
+    if(p>=end)off=0;else if(p>start)off=len*(1-_easeFl((p-start)/(end-start)));
+    if(p>=end)fillOp=1;else if(p>fillStart)fillOp=(p-fillStart)/((end-fillStart)||1);
+    paths+=`<path d="${g.d}" fill="${color}" fill-opacity="${fillOp.toFixed(2)}" stroke="${color}" stroke-width="${_STROKE}" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${len.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/>`;
+    if(p<drawFrac&&p>=start&&p<end){const pt=ptAtLen(g.pts,((p-start)/(end-start))*len);penX=pt.x;penY=pt.y}
+  }
+  const pen=(p<drawFrac&&penX!==null)?`<g transform="translate(${penX.toFixed(1)},${penY.toFixed(1)})"><g transform="rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g></g>`:"";
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
+<g transform="translate(${dx.toFixed(2)},${dy.toFixed(2)})">${paths}${pen}</g>
+</svg>`;
+}
+
 function buildSVG(text,font,fk,color,speed,bgC,animated){
   const W=600,H=200,b=bi(bgC),dur=(2.4/speed).toFixed(2);
   const sk=font.skewX?`skewX(${font.skewX})`:"",f=fl(font,text,W,H),dt=b.t?"":dots(W,H,b.gr);
@@ -81,12 +195,14 @@ ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
 ${txtEl}
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45"/>
 </svg>`;
+  const strokeLen=Math.round(text.length*font.size*3.5),textW=font.size*.48*text.length,txS=(W/2-textW/2).toFixed(1),txE=(W/2+textW/2).toFixed(1);
+  const animTxt=`<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" fill-opacity="0" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="${strokeLen}" stroke-dashoffset="${strokeLen}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}">${esc(text)}<animate attributeName="stroke-dashoffset" values="${strokeLen};0;0" keyTimes="0;0.8;1" dur="${dur}s" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/><animate attributeName="fill-opacity" values="0;0;1;1" keyTimes="0;0.65;0.85;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/><animate attributeName="stroke-opacity" values="1;1;0;0" keyTimes="0;0.75;0.95;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></text>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fc(fk)}</style>
-<defs><clipPath id="r"><rect x="0" y="0" width="0" height="${H}"><animate attributeName="width" from="0" to="${W}" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/></rect></clipPath></defs>
+<defs><clipPath id="r"><rect x="0" y="0" width="${txS}" height="${H}"><animate attributeName="width" values="${txS};${txE};${W}" keyTimes="0;0.8;1" dur="${dur}s" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></rect></clipPath></defs>
 ${b.t?"":`<rect width="${W}" height="${H}" rx="4" fill="${b.bg}"/>`}${dt}
-<g clip-path="url(#r)">${txtEl}</g>
-<g opacity="1"><animateTransform attributeName="transform" type="translate" from="0 0" to="${W} 0" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1" keyTimes="0;1" repeatCount="indefinite"/><g transform="translate(0,${H/2-8}) rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.92;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>
+<g clip-path="url(#r)">${animTxt}</g>
+<g opacity="1"><animateTransform attributeName="transform" type="translate" values="${txS} 0;${txE} 0;${txE} 0" keyTimes="0;0.8;1" dur="${dur}s" fill="freeze" calcMode="spline" keySplines="0.4 0 0.2 1;0 0 1 1" repeatCount="indefinite"/><g transform="translate(0,${H/2-8}) rotate(22)"><rect x="-1.5" y="-28" width="3" height="26" rx="1" fill="${b.pn}"/><polygon points="0,1 -1.8,-5 1.8,-5" fill="${color}"/></g><animate attributeName="opacity" values="1;1;0" keyTimes="0;0.85;1" dur="${dur}s" fill="freeze" repeatCount="indefinite"/></g>
 <path d="${f.d}" fill="none" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".45" stroke-dasharray="${f.l}" stroke-dashoffset="${f.l}"><animate attributeName="stroke-dashoffset" values="${f.l};${f.l};0;0" keyTimes="0;0.72;0.95;1" dur="${dur}s" calcMode="spline" keySplines="0 0 1 1;0.4 0 0.2 1;0 0 1 1" fill="freeze" repeatCount="indefinite"/></path>
 </svg>`;
 }
@@ -104,13 +220,24 @@ function buildStaticFrame(text,font,fk,color,bgC,progress){
   const sk=font.skewX?`skewX(${font.skewX})`:"";
   const f=fl(font,text,W,H);
   const dt=b.t?"":dots(W,H,b.gr);
-  const clipW=W*_easeStd(progress);
-  const penX=W*_easeStd(progress);
-  const penOp=progress<=0.92?1:Math.max(0,1-(progress-0.92)/0.08);
+  const strokeLen=Math.round(text.length*font.size*3.5);
+  const textW=font.size*.48*text.length,txS=W/2-textW/2,txE=W/2+textW/2;
+  let sDashOff=strokeLen;
+  if(progress<=0.8){sDashOff=strokeLen*(1-_easeFl(progress/0.8))}else{sDashOff=0}
+  let fillOp=0;
+  if(progress>0.65&&progress<=0.85)fillOp=(progress-0.65)/0.2;
+  else if(progress>0.85)fillOp=1;
+  let sOp=1;
+  if(progress>0.75&&progress<=0.95)sOp=1-(progress-0.75)/0.2;
+  else if(progress>0.95)sOp=0;
+  const penX=progress<=0.8?txS+(txE-txS)*_easeFl(progress/0.8):txE;
+  const penOp=progress<=0.85?1:Math.max(0,1-(progress-0.85)/0.15);
   let dashOff=parseFloat(f.l);
   if(progress>0.72&&progress<=0.95){const sp=(progress-0.72)/(0.95-0.72);dashOff=parseFloat(f.l)*(1-_easeFl(sp))}
   else if(progress>0.95)dashOff=0;
-  const txtEl=`<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}" ${font.sw?`stroke="${color}" stroke-width="${font.sw}"`:""}>${esc(text)}</text>`;
+  let clipW;
+  if(progress<=0.8){clipW=txS+(txE-txS)*_easeFl(progress/0.8)}else{clipW=txE+(W-txE)*((progress-0.8)/0.2)}
+  const txtEl=`<text x="${W/2}" y="${H/2+font.size*.08+font.yo}" font-family="'${font.family}',cursive,serif" font-size="${font.size}" font-weight="${font.weight}" font-style="${font.style}" fill="${color}" fill-opacity="${fillOp.toFixed(2)}" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="${sOp.toFixed(2)}" stroke-dasharray="${strokeLen}" stroke-dashoffset="${sDashOff.toFixed(0)}" text-anchor="middle" dominant-baseline="middle" letter-spacing="${font.ls}" transform="translate(0,0) ${sk}" transform-origin="${W/2} ${H/2}">${esc(text)}</text>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
 <style>${fc(fk)}</style>
 <defs><clipPath id="r"><rect x="0" y="0" width="${clipW.toFixed(1)}" height="${H}"/></clipPath></defs>
@@ -150,10 +277,12 @@ function encodeAPNG(pngBuffers,delays){
   return Buffer.concat(parts);
 }
 
-async function generateAPNG(text,font,fk,color,speed,bgC){
+async function generateAPNG(text,font,fk,color,speed,bgC,anim){
   if(!Resvg)throw new Error("APNG requires @resvg/resvg-js");
-  const dur=2.4/speed;
-  const fps=30,frameCount=Math.min(90,Math.max(12,Math.ceil(dur*fps)));
+  // Handwrite mode renders self-contained vector paths (no font needed by resvg)
+  const gd=anim==="write"?glyphData(text,font,fk):null;
+  const dur=gd?hwTiming(gd.glyphs.length,speed).totalDur:2.4/speed;
+  const fps=30,frameCount=Math.min(120,Math.max(12,Math.ceil(dur*fps)));
   const delay=Math.round(dur*1000/frameCount);
   // Hold final frame for 1s (5×200ms) before looping
   const holdFrames=5,holdDelay=200;
@@ -171,7 +300,7 @@ async function generateAPNG(text,font,fk,color,speed,bgC){
   const pngs=[],dly=[];
   for(let i=0;i<frameCount+holdFrames;i++){
     const progress=i<frameCount?i/(frameCount-1):1;
-    const svg=buildStaticFrame(text,font,fk,color,bgC,progress);
+    const svg=gd?buildHandwriteFrame(gd,color,bgC,progress,speed):buildStaticFrame(text,font,fk,color,bgC,progress);
     const r=new Resvg(svg,{fitTo:{mode:"width",value:600},font:fontOpts});
     pngs.push(r.render().asPng());
     dly.push(i<frameCount?delay:holdDelay);
@@ -190,6 +319,8 @@ module.exports = async (req, res) => {
   const ck   = (q.color||"navy").toLowerCase();
   const spd  = Math.max(.25,Math.min(5,parseFloat(q.speed)||1));
   const fmt  = (q.format||"svg").toLowerCase();
+  // anim: "print" (legacy left-to-right reveal, default) | "write" (stroke-by-stroke handwriting)
+  const anim = (q.anim||"print").toLowerCase()==="write"?"write":"print";
   const bgR  = q.bg||"";
   const bgC  = bgR==="transparent"?"transparent":/^#?[0-9a-fA-F]{3,6}$/.test(bgR)?(bgR[0]==="#"?bgR:"#"+bgR):"#faf8f3";
 
@@ -199,7 +330,7 @@ module.exports = async (req, res) => {
 
   if(fmt==="apng"){
     try{
-      const apng=await generateAPNG(text,font,fk,color,spd,bgC);
+      const apng=await generateAPNG(text,font,fk,color,spd,bgC,anim);
       res.setHeader("Content-Type","image/png");
       res.setHeader("Cache-Control","public,s-maxage=3600,stale-while-revalidate=86400");
       res.status(200).send(apng);
@@ -207,7 +338,14 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const svg = buildSVG(text,font,fk,color,spd,bgC,fmt!=="static");
+  let svg;
+  if(anim==="write"){
+    const gd=fmt==="static"?glyphData(text,font,fk):null;
+    svg=fmt==="static"?(gd?buildHandwriteFrame(gd,color,bgC,1,spd):buildSVG(text,font,fk,color,spd,bgC,false))
+                      :buildHandwriteSVG(text,font,fk,color,spd,bgC);
+  }else{
+    svg=buildSVG(text,font,fk,color,spd,bgC,fmt!=="static");
+  }
   res.setHeader("Content-Type","image/svg+xml;charset=utf-8");
   res.setHeader("Cache-Control","public,s-maxage=3600,stale-while-revalidate=86400");
   res.status(200).send(svg);
